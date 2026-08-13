@@ -1,30 +1,18 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { AlertCircle, BarChart3, Bell, Check, ChevronDown, CircleHelp, Clock3, Command, Inbox, LayoutDashboard, ListFilter, MessageSquare, MoreHorizontal, Search, Settings, SlidersHorizontal, Sparkles, Tag, Users, X, Zap } from 'lucide-react';
+import Link from 'next/link';
+import { useEffect, useMemo, useState } from 'react';
+import { AlertCircle, BarChart3, Bell, Check, ChevronDown, CircleHelp, Clock3, Command, Inbox, LayoutDashboard, ListFilter, MessageSquare, MoreHorizontal, Search, Settings, SlidersHorizontal, Sparkles, Tag, Users, Zap } from 'lucide-react';
+import { fetchIssues, type Category, type DashboardIssue as Issue, type Sentiment, type Severity } from '@/lib/feedback-api';
 
-type Category = 'Application Generation' | 'AI Response' | 'Build Failure' | 'UI/UX' | 'Authentication' | 'Performance' | 'Integration' | 'Other';
-type Sentiment = 'Positive' | 'Neutral' | 'Negative' | 'Frustrated';
-type Severity = 'Low' | 'Medium' | 'High' | 'Critical';
 type DashboardState = 'ready' | 'loading' | 'empty' | 'error';
-type Issue = { id: string; title: string; category: Category; sentiment: Sentiment; severity: Severity; status: 'Open' | 'Resolved'; time: string; assignee: string; initials: string };
-
 type Distribution = { label: string; value: number; color: string };
 
 const categories: Category[] = ['Application Generation', 'AI Response', 'Build Failure', 'UI/UX', 'Authentication', 'Performance', 'Integration', 'Other'];
 const sentiments: Sentiment[] = ['Positive', 'Neutral', 'Negative', 'Frustrated'];
 const severities: Severity[] = ['Low', 'Medium', 'High', 'Critical'];
 
-const issues: Issue[] = [
-  { id: 'FB-1042', title: 'Exporting reports times out for larger workspaces', category: 'Performance', sentiment: 'Frustrated', severity: 'High', status: 'Open', time: '12 min ago', assignee: 'Jordan Lee', initials: 'JL' },
-  { id: 'FB-1041', title: 'Generated response missed the requested API example', category: 'AI Response', sentiment: 'Negative', severity: 'Medium', status: 'Open', time: '34 min ago', assignee: 'Maya Chen', initials: 'MC' },
-  { id: 'FB-1040', title: 'Billing integration shows an old plan after upgrade', category: 'Integration', sentiment: 'Frustrated', severity: 'Critical', status: 'Open', time: '1 hr ago', assignee: 'Unassigned', initials: '—' },
-  { id: 'FB-1039', title: 'Mobile navigation overlaps the feedback button', category: 'UI/UX', sentiment: 'Neutral', severity: 'Low', status: 'Resolved', time: '2 hrs ago', assignee: 'Sam Rivera', initials: 'SR' },
-  { id: 'FB-1038', title: 'Build fails when generating a project with SSO enabled', category: 'Build Failure', sentiment: 'Negative', severity: 'High', status: 'Open', time: '3 hrs ago', assignee: 'Alex Morgan', initials: 'AM' },
-  { id: 'FB-1037', title: 'Users cannot sign in after resetting their password', category: 'Authentication', sentiment: 'Frustrated', severity: 'Critical', status: 'Open', time: '4 hrs ago', assignee: 'Priya Shah', initials: 'PS' },
-];
-
-const navItems = [{ label: 'Overview', icon: LayoutDashboard }, { label: 'Issue list', icon: Inbox, count: '24' }, { label: 'Feedback', icon: MessageSquare }, { label: 'Insights', icon: BarChart3 }];
+const navItems = [{ label: 'Overview', href: '/', icon: LayoutDashboard }, { label: 'Issue list', href: '/issues', icon: Inbox, count: '24' }, { label: 'Feedback', href: '/issues', icon: MessageSquare }, { label: 'Insights', href: '/', icon: BarChart3 }];
 const categoryColors = ['#3468f5', '#8c6af5', '#f19a38', '#e86b91', '#32a78d', '#e56d61', '#55a2d8', '#a9b1bf'];
 const sentimentColors = ['#3eae83', '#9aa4b5', '#e46e66', '#ed9a3c'];
 const severityColors = ['#8db4f7', '#f0bd62', '#eb7c6c', '#bd5377'];
@@ -39,16 +27,40 @@ export default function Dashboard() {
   const [selectedCategory, setSelectedCategory] = useState<Category | ''>('');
   const [selectedSentiment, setSelectedSentiment] = useState<Sentiment | ''>('');
   const [selectedSeverity, setSelectedSeverity] = useState<Severity | ''>('');
-  const [viewState, setViewState] = useState<DashboardState>('ready');
+  const [issues, setIssues] = useState<Issue[]>([]);
+  const [viewState, setViewState] = useState<DashboardState>('loading');
   const [notice, setNotice] = useState(false);
+  const [retryKey, setRetryKey] = useState(0);
 
-  const filteredIssues = useMemo(() => issues.filter((issue) => issue.title.toLowerCase().includes(query.toLowerCase()) && (!selectedCategory || issue.category === selectedCategory) && (!selectedSentiment || issue.sentiment === selectedSentiment) && (!selectedSeverity || issue.severity === selectedSeverity) && (!selectedMetric || (selectedMetric === 'Total issues' || selectedMetric === 'Open issues' ? issue.status === 'Open' : selectedMetric === 'Resolved issues' ? issue.status === 'Resolved' : selectedMetric === 'Critical issues' ? issue.severity === 'Critical' : selectedMetric === 'High-severity issues' ? issue.severity === 'High' : issue.sentiment === 'Negative'))), [query, selectedCategory, selectedSentiment, selectedSeverity, selectedMetric]);
+  useEffect(() => {
+    const controller = new AbortController();
+    setViewState('loading');
+    fetchIssues({ signal: controller.signal }).then((nextIssues) => {
+      setIssues(nextIssues);
+      setViewState(nextIssues.length === 0 ? 'empty' : 'ready');
+    }).catch((error: unknown) => {
+      if (error instanceof DOMException && error.name === 'AbortError') return;
+      setViewState('error');
+    });
+    return () => controller.abort();
+  }, [retryKey]);
+
+  const filteredIssues = useMemo(() => issues.filter((issue) => issue.title.toLowerCase().includes(query.toLowerCase()) && (!selectedCategory || issue.category === selectedCategory) && (!selectedSentiment || issue.sentiment === selectedSentiment) && (!selectedSeverity || issue.severity === selectedSeverity) && (!selectedMetric || (selectedMetric === 'Total issues' || selectedMetric === 'Open issues' ? issue.status === 'Open' : selectedMetric === 'Resolved issues' ? issue.status === 'Resolved' : selectedMetric === 'Critical issues' ? issue.severity === 'Critical' : selectedMetric === 'High-severity issues' ? issue.severity === 'High' : issue.sentiment === 'Negative'))), [issues, query, selectedCategory, selectedSentiment, selectedSeverity, selectedMetric]);
+  const issueCount = issues.length;
+  const openCount = issues.filter((issue) => issue.status === 'Open').length;
+  const resolvedCount = issues.filter((issue) => issue.status === 'Resolved').length;
+  const criticalCount = issues.filter((issue) => issue.severity === 'Critical').length;
+  const highCount = issues.filter((issue) => issue.severity === 'High').length;
+  const negativeCount = issues.filter((issue) => issue.sentiment === 'Negative').length;
+  const categoryData = categories.map((label, index) => ({ label, value: issues.filter((issue) => issue.category === label).length, color: categoryColors[index] }));
+  const sentimentData = sentiments.map((label, index) => ({ label, value: issues.filter((issue) => issue.sentiment === label).length, color: sentimentColors[index] }));
+  const severityData = severities.map((label, index) => ({ label, value: issues.filter((issue) => issue.severity === label).length, color: severityColors[index] }));
 
   return <div className="app-shell">
     <aside className={`sidebar ${mobileNav ? 'mobile-open' : ''}`}>
       <div className="brand"><span className="brand-mark"><Sparkles size={15} /></span><span>feedback<span className="brand-accent">desk</span></span></div>
       <div className="workspace-switcher"><div className="workspace-icon">AC</div><div><strong>Acme Corp</strong><span>Product workspace</span></div><ChevronDown size={15} /></div>
-      <nav aria-label="Main navigation"><p className="nav-label">WORKSPACE</p>{navItems.map(({ label, icon: Icon, count }) => <button key={label} className={`nav-item ${label === 'Overview' ? 'active' : ''}`} onClick={() => label === 'Issue list' && document.getElementById('issues')?.scrollIntoView({ behavior: 'smooth' })}><Icon size={17} /><span>{label}</span>{count && <em>{count}</em>}</button>)}<p className="nav-label section-label">MANAGE</p><button className="nav-item"><Tag size={17} /><span>Categories</span></button><button className="nav-item"><Users size={17} /><span>Team</span></button><button className="nav-item"><Settings size={17} /><span>Settings</span></button></nav>
+      <nav aria-label="Main navigation"><p className="nav-label">WORKSPACE</p>{navItems.map(({ label, href, icon: Icon, count }) => <Link key={label} href={href} className={`nav-item ${label === 'Overview' ? 'active' : ''}`}><Icon size={17} /><span>{label}</span>{count && <em>{count}</em>}</Link>)}<p className="nav-label section-label">MANAGE</p><button className="nav-item"><Tag size={17} /><span>Categories</span></button><button className="nav-item"><Users size={17} /><span>Team</span></button><button className="nav-item"><Settings size={17} /><span>Settings</span></button></nav>
       <div className="sidebar-bottom"><div className="profile"><Avatar initials="KM" /><div><strong>Kate Miller</strong><span>Admin</span></div><MoreHorizontal size={16} /></div></div>
     </aside>
     {mobileNav && <button className="scrim" aria-label="Close navigation" onClick={() => setMobileNav(false)} />}
@@ -57,9 +69,9 @@ export default function Dashboard() {
       {notice && <div className="notification-popover"><strong>Notifications</strong><p>3 new feedback items need triage.</p><button onClick={() => setNotice(false)}>Dismiss</button></div>}
       <div className="page-wrap">
         <section className="page-heading"><div><p className="eyebrow">AI FEEDBACK ANALYZER / OVERVIEW</p><h1>Issue overview <span>✦</span></h1><p className="subtitle">A shared view of what users are reporting across the product.</p></div><div className="state-controls"><label htmlFor="view-state">Demo state</label><select id="view-state" value={viewState} onChange={(event) => setViewState(event.target.value as DashboardState)}><option value="ready">Ready</option><option value="loading">Loading</option><option value="empty">Empty</option><option value="error">Error</option></select></div></section>
-        {viewState === 'loading' ? <StatePanel type="loading" /> : viewState === 'error' ? <StatePanel type="error" onRetry={() => setViewState('ready')} /> : viewState === 'empty' ? <StatePanel type="empty" onRetry={() => setViewState('ready')} /> : <>
-          <section className="metric-grid" aria-label="Issue summary"><Metric label="Total issues" value="1,284" change="12.5%" tone="blue" icon={<MessageSquare size={18} />} onClick={() => { setSelectedMetric('Total issues'); document.getElementById('issues')?.scrollIntoView({ behavior: 'smooth' }); }} /><Metric label="Open issues" value="248" change="8.2%" tone="orange" icon={<AlertCircle size={18} />} onClick={() => { setSelectedMetric('Open issues'); document.getElementById('issues')?.scrollIntoView({ behavior: 'smooth' }); }} /><Metric label="Resolved issues" value="1,036" change="18.4%" tone="green" icon={<Check size={18} />} onClick={() => { setSelectedMetric('Resolved issues'); document.getElementById('issues')?.scrollIntoView({ behavior: 'smooth' }); }} /><Metric label="Critical issues" value="18" change="3.1%" tone="red" icon={<Zap size={18} />} onClick={() => { setSelectedMetric('Critical issues'); document.getElementById('issues')?.scrollIntoView({ behavior: 'smooth' }); }} /><Metric label="High-severity issues" value="96" change="5.7%" tone="violet" icon={<BarChart3 size={18} />} onClick={() => { setSelectedMetric('High-severity issues'); document.getElementById('issues')?.scrollIntoView({ behavior: 'smooth' }); }} /><Metric label="Negative sentiment" value="312" change="6.4%" tone="pink" icon={<MessageSquare size={18} />} onClick={() => { setSelectedMetric('Negative sentiment'); document.getElementById('issues')?.scrollIntoView({ behavior: 'smooth' }); }} /></section>
-          <section className="chart-grid"><DistributionPanel title="Issues by category" subtitle="Where issues are concentrated" data={categories.map((label, index) => ({ label, value: [302, 258, 196, 174, 132, 101, 77, 44][index], color: categoryColors[index] }))} onSelect={(value) => setSelectedCategory(selectedCategory === value as Category ? '' : value as Category)} selected={selectedCategory} /><DistributionPanel title="Issues by sentiment" subtitle="How users are feeling" data={sentiments.map((label, index) => ({ label, value: [248, 418, 312, 306][index], color: sentimentColors[index] }))} onSelect={(value) => setSelectedSentiment(selectedSentiment === value as Sentiment ? '' : value as Sentiment)} selected={selectedSentiment} /><DistributionPanel title="Issues by severity" subtitle="Impact across reported issues" data={severities.map((label, index) => ({ label, value: [420, 512, 96, 18][index], color: severityColors[index] }))} onSelect={(value) => setSelectedSeverity(selectedSeverity === value as Severity ? '' : value as Severity)} selected={selectedSeverity} /></section>
+        {viewState === 'loading' ? <StatePanel type="loading" /> : viewState === 'error' ? <StatePanel type="error" onRetry={() => { setViewState('loading'); setRetryKey((value) => value + 1); }} /> : viewState === 'empty' ? <StatePanel type="empty" onRetry={() => { setViewState('loading'); setRetryKey((value) => value + 1); }} /> : <>
+          <section className="metric-grid" aria-label="Issue summary"><Metric label="Total issues" value={issueCount.toLocaleString()} change="12.5%" tone="blue" icon={<MessageSquare size={18} />} onClick={() => { setSelectedMetric('Total issues'); document.getElementById('issues')?.scrollIntoView({ behavior: 'smooth' }); }} /><Metric label="Open issues" value={openCount.toLocaleString()} change="8.2%" tone="orange" icon={<AlertCircle size={18} />} onClick={() => { setSelectedMetric('Open issues'); document.getElementById('issues')?.scrollIntoView({ behavior: 'smooth' }); }} /><Metric label="Resolved issues" value={resolvedCount.toLocaleString()} change="18.4%" tone="green" icon={<Check size={18} />} onClick={() => { setSelectedMetric('Resolved issues'); document.getElementById('issues')?.scrollIntoView({ behavior: 'smooth' }); }} /><Metric label="Critical issues" value={criticalCount.toLocaleString()} change="3.1%" tone="red" icon={<Zap size={18} />} onClick={() => { setSelectedMetric('Critical issues'); document.getElementById('issues')?.scrollIntoView({ behavior: 'smooth' }); }} /><Metric label="High-severity issues" value={highCount.toLocaleString()} change="5.7%" tone="violet" icon={<BarChart3 size={18} />} onClick={() => { setSelectedMetric('High-severity issues'); document.getElementById('issues')?.scrollIntoView({ behavior: 'smooth' }); }} /><Metric label="Negative sentiment" value={negativeCount.toLocaleString()} change="6.4%" tone="pink" icon={<MessageSquare size={18} />} onClick={() => { setSelectedMetric('Negative sentiment'); document.getElementById('issues')?.scrollIntoView({ behavior: 'smooth' }); }} /></section>
+          <section className="chart-grid"><DistributionPanel title="Issues by category" subtitle="Where issues are concentrated" data={categoryData} onSelect={(value) => setSelectedCategory(selectedCategory === value as Category ? '' : value as Category)} selected={selectedCategory} /><DistributionPanel title="Issues by sentiment" subtitle="How users are feeling" data={sentimentData} onSelect={(value) => setSelectedSentiment(selectedSentiment === value as Sentiment ? '' : value as Sentiment)} selected={selectedSentiment} /><DistributionPanel title="Issues by severity" subtitle="Impact across reported issues" data={severityData} onSelect={(value) => setSelectedSeverity(selectedSeverity === value as Severity ? '' : value as Severity)} selected={selectedSeverity} /></section>
           <section className="panel timeline-panel"><div className="panel-heading"><div><h2>Issues reported over time</h2><p>Incoming issue volume across the last 30 days</p></div><button className="select-button">Last 30 days <ChevronDown size={14} /></button></div><TimelineChart /></section>
           <section className="panel issues-panel" id="issues"><div className="issues-heading"><div><h2>{selectedMetric || selectedCategory || selectedSentiment || selectedSeverity || 'Recent issues'}</h2><p>Click a summary card or chart segment to filter this list.</p></div><button className="secondary-button" onClick={() => { setSelectedMetric(''); setSelectedCategory(''); setSelectedSentiment(''); setSelectedSeverity(''); setQuery(''); }}><SlidersHorizontal size={16} /> Clear filters</button></div><div className="table-toolbar"><div className="search-box"><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search reported issues..." aria-label="Search reported issues" /></div><button className="filter-button"><ListFilter size={15} /> Recent <ChevronDown size={14} /></button></div><IssueTable issues={filteredIssues} /></section>
         </>}
