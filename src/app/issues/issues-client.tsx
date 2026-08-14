@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { AlertCircle, ArrowLeft, Bell, CalendarDays, ChevronDown, CircleHelp, Command, Inbox, LayoutDashboard, ListFilter, MoreHorizontal, Search, SlidersHorizontal, Sparkles, X } from 'lucide-react';
-import { fetchDetailedIssues } from '@/lib/feedback-api';
+import { fetchIssuePage } from '@/lib/feedback-api';
 
 type Category = 'Application Generation' | 'AI Response' | 'Build Failure' | 'UI/UX' | 'Authentication' | 'Performance' | 'Integration' | 'Other';
 type Sentiment = 'Positive' | 'Neutral' | 'Negative' | 'Frustrated';
@@ -38,31 +38,27 @@ export default function IssuesClient() {
   const [issues, setIssues] = useState<Issue[]>([]);
   const [viewState, setViewState] = useState<ViewState>('loading');
   const [retryKey, setRetryKey] = useState(0);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const pageSize = 10;
 
   useEffect(() => {
     const controller = new AbortController();
-    setViewState('loading');
-    fetchDetailedIssues({ signal: controller.signal }).then((nextIssues) => {
-      setIssues(nextIssues);
-      setViewState(nextIssues.length ? 'ready' : 'empty');
+    fetchIssuePage({ page, pageSize, search: query, category, subcategory, sentiment, severity, status, from, to, sort }, { signal: controller.signal }).then((result) => {
+      setIssues(result.items);
+      setTotal(result.pagination.total);
+      setTotalPages(Math.max(1, result.pagination.totalPages));
+      setViewState(result.items.length ? 'ready' : 'empty');
     }).catch((error: unknown) => {
       if (error instanceof DOMException && error.name === 'AbortError') return;
       setViewState('error');
     });
     return () => controller.abort();
-  }, [retryKey]);
+  }, [category, from, page, pageSize, query, retryKey, sentiment, severity, sort, status, subcategory, to]);
 
-  const subcategories = useMemo(() => [...new Set(issues.filter((issue) => !category || issue.category === category).map((issue) => issue.subcategory))], [category, issues]);
-  const filtered = useMemo(() => {
-    const result = issues.filter((issue) => {
-      const haystack = `${issue.summary} ${issue.feedback}`.toLowerCase();
-      return (!query || haystack.includes(query.toLowerCase())) && (!category || issue.category === category) && (!subcategory || issue.subcategory === subcategory) && (!sentiment || issue.sentiment === sentiment) && (!severity || issue.severity === severity) && (!status || issue.status === status) && (!from || issue.createdAt.slice(0, 10) >= from) && (!to || issue.createdAt.slice(0, 10) <= to);
-    });
-    return result.sort((a, b) => sort === 'severity' ? severities.indexOf(a.severity) - severities.indexOf(b.severity) : sort === 'newest' ? b.createdAt.localeCompare(a.createdAt) : a.createdAt.localeCompare(b.createdAt));
-  }, [category, from, issues, query, sentiment, severity, sort, status, subcategory, to]);
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
-  const visibleIssues = filtered.slice((page - 1) * pageSize, page * pageSize);
+  const subcategories = useMemo(() => [...new Set(issues.map((issue) => issue.subcategory))], [issues]);
+  const filtered = issues;
+  const visibleIssues = issues;
   const hasFilters = Boolean(query || category || subcategory || sentiment || severity || status || from || to);
   const clearFilters = () => { setQuery(''); setCategory(''); setSubcategory(''); setSentiment(''); setSeverity(''); setStatus(''); setFrom(''); setTo(''); setPage(1); };
 
@@ -72,9 +68,9 @@ export default function IssuesClient() {
     <main className="main-content"><header className="topbar"><button className="mobile-menu" onClick={() => setMobileNav(true)} aria-label="Open navigation"><Command size={19} /></button><div className="breadcrumbs"><span>Workspace</span><span>/</span><strong>Issues</strong></div><div className="top-actions"><button className="icon-button" aria-label="Help"><CircleHelp size={19} /></button><button className="icon-button notification" aria-label="Notifications"><Bell size={19} /><i /></button><span className="avatar top-user">VP</span></div></header>
       <div className="page-wrap issues-page"><section className="page-heading issues-page-heading"><div><p className="eyebrow">WORKSPACE / ISSUE MANAGEMENT</p><h1>Issues</h1><p className="subtitle">Search, triage, and understand every reported issue.</p></div><Link className="back-link" href="/"><ArrowLeft size={15} /> Overview</Link></section>
         {viewState === 'loading' ? <StatePanel type="loading" /> : viewState === 'error' ? <StatePanel type="error" onRetry={() => { setViewState('loading'); setRetryKey((value) => value + 1); }} /> : viewState === 'empty' ? <StatePanel type="empty" onRetry={() => { setViewState('loading'); setRetryKey((value) => value + 1); }} /> : <>
-          <section className="issues-toolbar panel"><div className="issues-search search-box"><Search size={16} /><input value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} placeholder="Search summary or original feedback..." aria-label="Search summary or original feedback" /></div><button className="filter-button"><ListFilter size={15} /> {filtered.length} issues</button><label className="sort-control">Sort by <select value={sort} onChange={(event) => { setSort(event.target.value as typeof sort); setPage(1); }}><option value="newest">Newest</option><option value="oldest">Oldest</option><option value="severity">Severity</option></select><ChevronDown size={13} /></label></section>
+          <section className="issues-toolbar panel"><div className="issues-search search-box"><Search size={16} /><input value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} placeholder="Search summary or original feedback..." aria-label="Search summary or original feedback" /></div><button className="filter-button"><ListFilter size={15} /> {total} issues</button><label className="sort-control">Sort by <select value={sort} onChange={(event) => { setSort(event.target.value as typeof sort); setPage(1); }}><option value="newest">Newest</option><option value="oldest">Oldest</option><option value="severity">Severity</option></select><ChevronDown size={13} /></label></section>
           <section className="filters-panel panel"><div className="filters-heading"><div><h2>Filter issues</h2><p>Refine the list by classification, status, or date.</p></div>{hasFilters && <button className="clear-button" onClick={clearFilters}><X size={13} /> Clear all filters</button>}</div><div className="filters-grid"><FilterSelect label="Category" value={category} options={categories} onChange={(value) => { setCategory(value as Category); setSubcategory(''); setPage(1); }} /><FilterSelect label="Sub-category" value={subcategory} options={subcategories} onChange={(value) => { setSubcategory(value); setPage(1); }} disabled={!subcategories.length} /><FilterSelect label="Sentiment" value={sentiment} options={sentiments} onChange={(value) => { setSentiment(value as Sentiment); setPage(1); }} /><FilterSelect label="Severity" value={severity} options={severities} onChange={(value) => { setSeverity(value as Severity); setPage(1); }} /><FilterSelect label="Status" value={status} options={statuses} onChange={(value) => { setStatus(value as Status); setPage(1); }} /><DateFilter label="Created from" value={from} onChange={(value) => { setFrom(value); setPage(1); }} /><DateFilter label="Created to" value={to} onChange={(value) => { setTo(value); setPage(1); }} /></div></section>
-          <section className="panel issue-results"><div className="results-heading"><div><h2>All reported issues</h2><p>{filtered.length} matching issues</p></div><span className="result-meta">Page {page} of {totalPages}</span></div><div className="issues-table-wrap"><table className="issues-table"><thead><tr><th>ISSUE</th><th>ORIGINAL FEEDBACK</th><th>CATEGORY</th><th>SENTIMENT</th><th>SEVERITY</th><th>STATUS</th><th>CREATED</th><th>REFERENCE</th></tr></thead><tbody>{visibleIssues.map((issue) => <tr key={issue.id} onClick={() => setSelected(issue)} tabIndex={0} onKeyDown={(event) => event.key === 'Enter' && setSelected(issue)}><td><strong className="issue-id">{issue.id}</strong><span className="issue-summary">{issue.summary}</span></td><td><span className="feedback-preview">{issue.feedback}</span></td><td><Badge tone="tag-blue">{issue.category}</Badge><span className="subcat">{issue.subcategory}</span></td><td><Badge tone={`sentiment-${tone(issue.sentiment)}`}>{issue.sentiment}</Badge></td><td><Badge tone={`severity-${tone(issue.severity)}`}>{issue.severity}</Badge></td><td><Badge tone={`status-${tone(issue.status)}`}><i className="status-dot" />{issue.status}</Badge></td><td className="date-cell">{formatDate(issue.createdAt)}</td><td><span className="reference-cell">{issue.userReference}</span><span className="reference-cell">{issue.projectReference}</span></td></tr>)}</tbody></table>{visibleIssues.length === 0 && <div className="empty-state"><Inbox size={24} /><strong>No issues match these filters</strong><span>Clear a filter or try another search term.</span></div>}</div><Pagination page={page} totalPages={totalPages} onChange={setPage} /></section>
+          <section className="panel issue-results"><div className="results-heading"><div><h2>All reported issues</h2><p>{total} matching issues</p></div><span className="result-meta">Page {page} of {totalPages}</span></div><div className="issues-table-wrap"><table className="issues-table"><thead><tr><th>ISSUE</th><th>ORIGINAL FEEDBACK</th><th>CATEGORY</th><th>SENTIMENT</th><th>SEVERITY</th><th>STATUS</th><th>CREATED</th><th>REFERENCE</th></tr></thead><tbody>{visibleIssues.map((issue) => <tr key={issue.id} onClick={() => setSelected(issue)} tabIndex={0} onKeyDown={(event) => event.key === 'Enter' && setSelected(issue)}><td><strong className="issue-id">{issue.id}</strong><span className="issue-summary">{issue.summary}</span></td><td><span className="feedback-preview">{issue.feedback}</span></td><td><Badge tone="tag-blue">{issue.category}</Badge><span className="subcat">{issue.subcategory}</span></td><td><Badge tone={`sentiment-${tone(issue.sentiment)}`}>{issue.sentiment}</Badge></td><td><Badge tone={`severity-${tone(issue.severity)}`}>{issue.severity}</Badge></td><td><Badge tone={`status-${tone(issue.status)}`}><i className="status-dot" />{issue.status}</Badge></td><td className="date-cell">{formatDate(issue.createdAt)}</td><td><span className="reference-cell">{issue.userReference}</span><span className="reference-cell">{issue.projectReference}</span></td></tr>)}</tbody></table>{visibleIssues.length === 0 && <div className="empty-state"><Inbox size={24} /><strong>No issues match these filters</strong><span>Clear a filter or try another search term.</span></div>}</div><Pagination page={page} totalPages={totalPages} onChange={setPage} /></section>
         </>}
       </div>
     </main>
