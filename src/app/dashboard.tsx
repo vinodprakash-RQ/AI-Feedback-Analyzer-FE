@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { AlertCircle, BarChart3, Bell, Check, ChevronDown, CircleHelp, Clock3, Command, Inbox, LayoutDashboard, ListFilter, MessageSquare, MoreHorizontal, Search, Settings, SlidersHorizontal, Sparkles, Tag, Users, Zap } from 'lucide-react';
-import { fetchIssues, type Category, type DashboardIssue as Issue, type Sentiment, type Severity } from '@/lib/feedback-api';
+import { fetchIssues, submitFeedback, type Category, type DashboardIssue as Issue, type Sentiment, type Severity } from '@/lib/feedback-api';
 
 type DashboardState = 'ready' | 'loading' | 'empty' | 'error';
 type Distribution = { label: string; value: number; color: string };
@@ -68,7 +68,7 @@ export default function Dashboard() {
       <header className="topbar"><button className="mobile-menu" onClick={() => setMobileNav(true)} aria-label="Open navigation"><Command size={19} /></button><div className="breadcrumbs"><span>Workspace</span><span>/</span><strong>Dashboard</strong></div><div className="top-actions"><button className="icon-button" aria-label="Help"><CircleHelp size={19} /></button><button className="icon-button notification" aria-label="Notifications" onClick={() => setNotice(!notice)}><Bell size={19} /><i /></button><div className="top-avatar"><Avatar initials="KM" /></div></div></header>
       {notice && <div className="notification-popover"><strong>Notifications</strong><p>3 new feedback items need triage.</p><button onClick={() => setNotice(false)}>Dismiss</button></div>}
       <div className="page-wrap">
-        <section className="page-heading"><div><p className="eyebrow">AI FEEDBACK ANALYZER / OVERVIEW</p><h1>Issue overview <span>✦</span></h1><p className="subtitle">A shared view of what users are reporting across the product.</p></div><div className="state-controls"><label htmlFor="view-state">Demo state</label><select id="view-state" value={viewState} onChange={(event) => setViewState(event.target.value as DashboardState)}><option value="ready">Ready</option><option value="loading">Loading</option><option value="empty">Empty</option><option value="error">Error</option></select></div></section>
+        <section className="page-heading"><div><p className="eyebrow">AI FEEDBACK ANALYZER / OVERVIEW</p><h1>Issue overview <span>✦</span></h1><p className="subtitle">A shared view of what users are reporting across the product.</p></div><div className="heading-actions"><FeedbackComposer /><div className="state-controls"><label htmlFor="view-state">Demo state</label><select id="view-state" value={viewState} onChange={(event) => setViewState(event.target.value as DashboardState)}><option value="ready">Ready</option><option value="loading">Loading</option><option value="empty">Empty</option><option value="error">Error</option></select></div></div></section>
         {viewState === 'loading' ? <StatePanel type="loading" /> : viewState === 'error' ? <StatePanel type="error" onRetry={() => { setViewState('loading'); setRetryKey((value) => value + 1); }} /> : viewState === 'empty' ? <StatePanel type="empty" onRetry={() => { setViewState('loading'); setRetryKey((value) => value + 1); }} /> : <>
           <section className="metric-grid" aria-label="Issue summary"><Metric label="Total issues" value={issueCount.toLocaleString()} change="12.5%" tone="blue" icon={<MessageSquare size={18} />} onClick={() => { setSelectedMetric('Total issues'); document.getElementById('issues')?.scrollIntoView({ behavior: 'smooth' }); }} /><Metric label="Open issues" value={openCount.toLocaleString()} change="8.2%" tone="orange" icon={<AlertCircle size={18} />} onClick={() => { setSelectedMetric('Open issues'); document.getElementById('issues')?.scrollIntoView({ behavior: 'smooth' }); }} /><Metric label="Resolved issues" value={resolvedCount.toLocaleString()} change="18.4%" tone="green" icon={<Check size={18} />} onClick={() => { setSelectedMetric('Resolved issues'); document.getElementById('issues')?.scrollIntoView({ behavior: 'smooth' }); }} /><Metric label="Critical issues" value={criticalCount.toLocaleString()} change="3.1%" tone="red" icon={<Zap size={18} />} onClick={() => { setSelectedMetric('Critical issues'); document.getElementById('issues')?.scrollIntoView({ behavior: 'smooth' }); }} /><Metric label="High-severity issues" value={highCount.toLocaleString()} change="5.7%" tone="violet" icon={<BarChart3 size={18} />} onClick={() => { setSelectedMetric('High-severity issues'); document.getElementById('issues')?.scrollIntoView({ behavior: 'smooth' }); }} /><Metric label="Negative sentiment" value={negativeCount.toLocaleString()} change="6.4%" tone="pink" icon={<MessageSquare size={18} />} onClick={() => { setSelectedMetric('Negative sentiment'); document.getElementById('issues')?.scrollIntoView({ behavior: 'smooth' }); }} /></section>
           <section className="chart-grid"><DistributionPanel title="Issues by category" subtitle="Where issues are concentrated" data={categoryData} onSelect={(value) => setSelectedCategory(selectedCategory === value as Category ? '' : value as Category)} selected={selectedCategory} /><DistributionPanel title="Issues by sentiment" subtitle="How users are feeling" data={sentimentData} onSelect={(value) => setSelectedSentiment(selectedSentiment === value as Sentiment ? '' : value as Sentiment)} selected={selectedSentiment} /><DistributionPanel title="Issues by severity" subtitle="Impact across reported issues" data={severityData} onSelect={(value) => setSelectedSeverity(selectedSeverity === value as Severity ? '' : value as Severity)} selected={selectedSeverity} /></section>
@@ -78,6 +78,29 @@ export default function Dashboard() {
       </div>
     </main>
   </div>;
+}
+
+function FeedbackComposer() {
+  const [open, setOpen] = useState(false);
+  const [message, setMessage] = useState('');
+  const [status, setStatus] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle');
+  const [error, setError] = useState('');
+
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setStatus('submitting');
+    setError('');
+    try {
+      await submitFeedback({ message, source: 'feedback-desk', page_url: window.location.pathname, user_agent: navigator.userAgent });
+      setMessage('');
+      setStatus('success');
+    } catch (submissionError) {
+      setStatus('error');
+      setError(submissionError instanceof Error ? submissionError.message : 'Unable to submit feedback.');
+    }
+  }
+
+  return <><button className="primary-button" onClick={() => { setOpen(true); setStatus('idle'); }}><MessageSquare size={16} /> Submit feedback</button>{open && <div className="composer-scrim"><section className="feedback-composer" role="dialog" aria-modal="true" aria-labelledby="feedback-composer-title"><div className="composer-header"><div><p className="eyebrow">SEND TO FEEDBACK API</p><h2 id="feedback-composer-title">Submit user feedback</h2></div><button className="drawer-close" onClick={() => setOpen(false)} aria-label="Close feedback form">×</button></div><form onSubmit={handleSubmit}><label htmlFor="feedback-message">Feedback message</label><textarea id="feedback-message" value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Describe the issue reported by the user..." minLength={1} maxLength={20000} required /><div className="composer-footer"><span>{status === 'success' ? 'Feedback received.' : status === 'error' ? error : 'POST /api/v1/feedback'}</span><button className="primary-button" type="submit" disabled={status === 'submitting'}>{status === 'submitting' ? 'Submitting…' : 'Submit feedback'}</button></div></form></section></div>}</>;
 }
 
 function Metric({ label, value, change, tone, icon, onClick }: { label: string; value: string; change: string; tone: string; icon: React.ReactNode; onClick: () => void }) { return <button className="metric-card" onClick={onClick}><div className="metric-top"><span>{label}</span><span className={`metric-icon ${tone}`}>{icon}</span></div><strong>{value}</strong><div className="metric-change"><span className="positive">↑ {change}</span><span>vs. last period</span></div><span className="metric-hint">View issues →</span></button> }
