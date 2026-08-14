@@ -38,7 +38,7 @@ export default function IssuesClient() {
   const [issues, setIssues] = useState<Issue[]>([]);
   const [viewState, setViewState] = useState<ViewState>('loading');
   const [retryKey, setRetryKey] = useState(0);
-  const pageSize = 5;
+  const pageSize = 10;
 
   useEffect(() => {
     const controller = new AbortController();
