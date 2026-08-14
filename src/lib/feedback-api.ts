@@ -28,6 +28,13 @@ export type SubmitFeedbackInput = { message: string; user_id?: string; conversat
 export type SubmitFeedbackResponse = { feedback_id: string; status: string; created_at: string };
 export type FeedbackApiError = { error?: { code?: string; message?: string; request_id?: string } };
 
+export type DetailedIssue = { id: string; summary: string; feedback: string; category: Category; subcategory: string; sentiment: Sentiment; severity: Severity; status: 'New' | 'Investigating' | 'Resolved' | 'Closed'; createdAt: string; userReference: string; projectReference: string; conversationId: string; confidence: number; metadata: Record<string, string> };
+type ApiDetailedIssue = { id: string; summary: string; originalFeedback?: string; aiSummary?: string; category: string; subcategory?: string; sentiment: string; severity: string; aiConfidence?: number; status: 'NEW' | 'INVESTIGATING' | 'RESOLVED' | 'CLOSED'; createdAt: string; userReference?: string; projectReference?: string; conversationId?: string; metadata?: Record<string, unknown> };
+
+function normalizeDetailedIssue(issue: ApiDetailedIssue): DetailedIssue { return { id: issue.id, summary: issue.summary, feedback: issue.originalFeedback || issue.aiSummary || issue.summary, category: categoryLabels[issue.category] ?? 'Other', subcategory: issue.subcategory || 'Uncategorized', sentiment: sentimentLabels[issue.sentiment] ?? 'Neutral', severity: severityLabels[issue.severity] ?? 'Medium', status: issue.status === 'NEW' ? 'New' : issue.status === 'INVESTIGATING' ? 'Investigating' : issue.status === 'RESOLVED' ? 'Resolved' : 'Closed', createdAt: issue.createdAt, userReference: issue.userReference || 'Unknown user', projectReference: issue.projectReference || 'Unknown project', conversationId: issue.conversationId || 'Not available', confidence: issue.aiConfidence ?? 0, metadata: Object.fromEntries(Object.entries(issue.metadata || {}).map(([key, value]) => [key, String(value)])), }; }
+
+export async function fetchDetailedIssues(options: { signal?: AbortSignal } = {}): Promise<DetailedIssue[]> { const baseUrl = process.env.NEXT_PUBLIC_FEEDBACK_API_URL?.trim() || 'http://localhost:4000'; const response = await fetch(`${baseUrl.replace(/\/$/, '')}/api/issues?page=1&pageSize=100&sort=newest`, { signal: options.signal, headers: { Accept: 'application/json' }, cache: 'no-store' }); if (!response.ok) throw new Error(`Issue API returned ${response.status}`); const payload = await response.json() as { items: ApiDetailedIssue[] }; return payload.items.map(normalizeDetailedIssue); }
+
 export async function submitFeedback(input: SubmitFeedbackInput, options: { signal?: AbortSignal } = {}): Promise<SubmitFeedbackResponse> {
   const baseUrl = process.env.NEXT_PUBLIC_FEEDBACK_API_URL?.trim() || 'http://localhost:4000';
   const response = await fetch(`${baseUrl.replace(/\/$/, '')}/api/v1/feedback`, {
@@ -38,6 +45,7 @@ export async function submitFeedback(input: SubmitFeedbackInput, options: { sign
       'Content-Type': 'application/json',
       'Idempotency-Key': crypto.randomUUID(),
       'X-Request-ID': crypto.randomUUID(),
+      ...(process.env.NEXT_PUBLIC_FEEDBACK_API_KEY ? { 'x-api-key': process.env.NEXT_PUBLIC_FEEDBACK_API_KEY } : {}),
     },
     body: JSON.stringify(input),
   });
