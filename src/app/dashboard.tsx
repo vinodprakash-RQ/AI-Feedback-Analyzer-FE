@@ -84,6 +84,7 @@ function FeedbackComposer() {
   const [open, setOpen] = useState(false);
   const [message, setMessage] = useState('');
   const [status, setStatus] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle');
+  const [acknowledged, setAcknowledged] = useState(false);
   const [error, setError] = useState('');
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -94,13 +95,16 @@ function FeedbackComposer() {
       await submitFeedback({ message, source: 'feedback-desk', page_url: window.location.pathname, user_agent: navigator.userAgent });
       setMessage('');
       setStatus('success');
+      setOpen(false);
+      setAcknowledged(true);
+      window.setTimeout(() => setAcknowledged(false), 4000);
     } catch (submissionError) {
       setStatus('error');
       setError(submissionError instanceof Error ? submissionError.message : 'Unable to submit feedback.');
     }
   }
 
-  return <><button className="primary-button" onClick={() => { setOpen(true); setStatus('idle'); }}><MessageSquare size={16} /> Submit feedback</button>{open && <div className="composer-scrim"><section className="feedback-composer" role="dialog" aria-modal="true" aria-labelledby="feedback-composer-title"><div className="composer-header"><div><p className="eyebrow">SEND TO FEEDBACK API</p><h2 id="feedback-composer-title">Submit user feedback</h2></div><button className="drawer-close" onClick={() => setOpen(false)} aria-label="Close feedback form">×</button></div><form onSubmit={handleSubmit}><label htmlFor="feedback-message">Feedback message</label><textarea id="feedback-message" value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Describe the issue reported by the user..." minLength={1} maxLength={20000} required /><div className="composer-footer"><span>{status === 'success' ? 'Feedback received.' : status === 'error' ? error : 'POST /api/v1/feedback'}</span><button className="primary-button" type="submit" disabled={status === 'submitting'}>{status === 'submitting' ? 'Submitting…' : 'Submit feedback'}</button></div></form></section></div>}</>;
+  return <><button className="primary-button" onClick={() => { setOpen(true); setStatus('idle'); setAcknowledged(false); }}><MessageSquare size={16} /> Submit feedback</button>{acknowledged && <div className="feedback-acknowledgement" role="status" aria-live="polite"><Check size={15} /> Feedback submitted successfully.</div>}{open && <div className="composer-scrim"><section className="feedback-composer" role="dialog" aria-modal="true" aria-labelledby="feedback-composer-title"><div className="composer-header"><div><p className="eyebrow">SEND TO FEEDBACK API</p><h2 id="feedback-composer-title">Submit user feedback</h2></div><button className="drawer-close" onClick={() => setOpen(false)} aria-label="Close feedback form">×</button></div><form onSubmit={handleSubmit}><label htmlFor="feedback-message">Feedback message</label><textarea id="feedback-message" value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Describe the issue reported by the user..." minLength={1} maxLength={20000} required /><div className="composer-footer"><span>{status === 'success' ? 'Feedback received.' : status === 'error' ? error : 'POST /api/v1/feedback'}</span><button className="primary-button" type="submit" disabled={status === 'submitting'}>{status === 'submitting' ? 'Submitting…' : 'Submit feedback'}</button></div></form></section></div>}</>;
 }
 
 function Metric({ label, value, change, tone, icon, onClick }: { label: string; value: string; change: string; tone: string; icon: React.ReactNode; onClick: () => void }) { return <button className="metric-card" onClick={onClick}><div className="metric-top"><span>{label}</span><span className={`metric-icon ${tone}`}>{icon}</span></div><strong>{value}</strong><div className="metric-change"><span className="positive">↑ {change}</span><span>vs. last period</span></div><span className="metric-hint">View issues →</span></button> }
