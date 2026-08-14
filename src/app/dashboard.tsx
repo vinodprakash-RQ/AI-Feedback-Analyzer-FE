@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
-import { AlertCircle, BarChart3, Bell, Check, ChevronDown, CircleHelp, Clock3, Command, Inbox, LayoutDashboard, ListFilter, MessageSquare, MoreHorizontal, Search, Settings, SlidersHorizontal, Sparkles, Tag, Users, Zap } from 'lucide-react';
+import { AlertCircle, BarChart3, Bell, Check, ChevronDown, CircleHelp, Clock3, Command, Inbox, LayoutDashboard, ListFilter, MessageSquare, MoreHorizontal, Search, SlidersHorizontal, Sparkles, Zap } from 'lucide-react';
 import { fetchIssues, submitFeedback, type Category, type DashboardIssue as Issue, type Sentiment, type Severity } from '@/lib/feedback-api';
 
 type DashboardState = 'ready' | 'loading' | 'empty' | 'error';
@@ -12,7 +12,7 @@ const categories: Category[] = ['Application Generation', 'AI Response', 'Build 
 const sentiments: Sentiment[] = ['Positive', 'Neutral', 'Negative', 'Frustrated'];
 const severities: Severity[] = ['Low', 'Medium', 'High', 'Critical'];
 
-const navItems = [{ label: 'Overview', href: '/', icon: LayoutDashboard }, { label: 'Issue list', href: '/issues', icon: Inbox, count: '24' }, { label: 'Feedback', href: '/issues', icon: MessageSquare }, { label: 'Insights', href: '/', icon: BarChart3 }];
+const navItems = [{ label: 'Overview', href: '/', icon: LayoutDashboard }, { label: 'Issue list', href: '/issues', icon: Inbox, count: '24' }];
 const categoryColors = ['#3468f5', '#8c6af5', '#f19a38', '#e86b91', '#32a78d', '#e56d61', '#55a2d8', '#a9b1bf'];
 const sentimentColors = ['#3eae83', '#9aa4b5', '#e46e66', '#ed9a3c'];
 const severityColors = ['#8db4f7', '#f0bd62', '#eb7c6c', '#bd5377'];
@@ -60,7 +60,7 @@ export default function Dashboard() {
     <aside className={`sidebar ${mobileNav ? 'mobile-open' : ''}`}>
       <div className="brand"><span className="brand-mark"><Sparkles size={15} /></span><span>feedback<span className="brand-accent">desk</span></span></div>
       <div className="workspace-switcher"><div className="workspace-icon">AC</div><div><strong>Acme Corp</strong><span>Product workspace</span></div><ChevronDown size={15} /></div>
-      <nav aria-label="Main navigation"><p className="nav-label">WORKSPACE</p>{navItems.map(({ label, href, icon: Icon, count }) => <Link key={label} href={href} className={`nav-item ${label === 'Overview' ? 'active' : ''}`}><Icon size={17} /><span>{label}</span>{count && <em>{count}</em>}</Link>)}<p className="nav-label section-label">MANAGE</p><button className="nav-item"><Tag size={17} /><span>Categories</span></button><button className="nav-item"><Users size={17} /><span>Team</span></button><button className="nav-item"><Settings size={17} /><span>Settings</span></button></nav>
+      <nav aria-label="Main navigation"><p className="nav-label">WORKSPACE</p>{navItems.slice(0, 2).map(({ label, href, icon: Icon, count }) => <Link key={label} href={href} className={`nav-item ${label === 'Overview' ? 'active' : ''}`}><Icon size={17} /><span>{label}</span>{count && <em>{count}</em>}</Link>)}</nav>
       <div className="sidebar-bottom"><div className="profile"><Avatar initials="KM" /><div><strong>Kate Miller</strong><span>Admin</span></div><MoreHorizontal size={16} /></div></div>
     </aside>
     {mobileNav && <button className="scrim" aria-label="Close navigation" onClick={() => setMobileNav(false)} />}
