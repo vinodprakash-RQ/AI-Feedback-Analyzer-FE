@@ -1,57 +1,27 @@
 export type Category = 'Application Generation' | 'AI Response' | 'Build Failure' | 'UI/UX' | 'Authentication' | 'Performance' | 'Integration' | 'Other';
 export type Sentiment = 'Positive' | 'Neutral' | 'Negative' | 'Frustrated';
 export type Severity = 'Low' | 'Medium' | 'High' | 'Critical';
+export type Status = 'New' | 'Investigating' | 'Resolved' | 'Closed';
 export type DashboardIssue = { id: string; title: string; category: Category; sentiment: Sentiment; severity: Severity; status: 'Open' | 'Resolved'; time: string; createdAt?: string; assignee: string; initials: string };
-
-type ApiIssue = { id: string; summary: string; category: Uppercase<string>; sentiment: Uppercase<Sentiment>; severity: Uppercase<Severity>; status: 'NEW' | 'INVESTIGATING' | 'RESOLVED' | 'CLOSED'; createdAt: string; userReference?: string };
-type IssuesResponse = { items: ApiIssue[]; pagination: { page: number; pageSize: number; total: number; totalPages: number } };
-
-const mockIssues: DashboardIssue[] = [
-  { id: 'FB-1042', title: 'Exporting reports times out for larger workspaces', category: 'Performance', sentiment: 'Frustrated', severity: 'High', status: 'Open', time: '12 min ago', assignee: 'Jordan Lee', initials: 'JL' },
-  { id: 'FB-1041', title: 'Generated response missed the requested API example', category: 'AI Response', sentiment: 'Negative', severity: 'Medium', status: 'Open', time: '34 min ago', assignee: 'Maya Chen', initials: 'MC' },
-  { id: 'FB-1040', title: 'Billing integration shows an old plan after upgrade', category: 'Integration', sentiment: 'Frustrated', severity: 'Critical', status: 'Open', time: '1 hr ago', assignee: 'Unassigned', initials: '—' },
-  { id: 'FB-1039', title: 'Mobile navigation overlaps the feedback button', category: 'UI/UX', sentiment: 'Neutral', severity: 'Low', status: 'Resolved', time: '2 hrs ago', assignee: 'Sam Rivera', initials: 'SR' },
-  { id: 'FB-1038', title: 'Build fails when generating a project with SSO enabled', category: 'Build Failure', sentiment: 'Negative', severity: 'High', status: 'Open', time: '3 hrs ago', assignee: 'Alex Morgan', initials: 'AM' },
-  { id: 'FB-1037', title: 'Users cannot sign in after resetting their password', category: 'Authentication', sentiment: 'Frustrated', severity: 'Critical', status: 'Open', time: '4 hrs ago', assignee: 'Priya Shah', initials: 'PS' },
-];
+export type DetailedIssue = { id: string; summary: string; feedback: string; category: Category; subcategory: string; sentiment: Sentiment; severity: Severity; status: Status; createdAt: string; userReference: string; projectReference: string; conversationId: string; confidence: number; metadata: Record<string, string> };
+export type IssueFilters = { page: number; pageSize: number; search?: string; category?: string; subcategory?: string; sentiment?: string; severity?: string; status?: string; from?: string; to?: string; sort?: 'newest' | 'oldest' | 'severity' };
+export type IssuePage = { items: DetailedIssue[]; pagination: { page: number; pageSize: number; total: number; totalPages: number } };
+export type SubmitFeedbackInput = { message: string; user_id?: string; conversation_id?: string; project_id?: string; source?: string; page_url?: string; user_agent?: string; metadata?: Record<string, unknown> };
+export type SubmitFeedbackResponse = { feedback_id: string; status: string; created_at: string };
 
 const categoryLabels: Record<string, Category> = { APPLICATION_GENERATION: 'Application Generation', AI_RESPONSE: 'AI Response', BUILD_FAILURE: 'Build Failure', UI_UX: 'UI/UX', AUTHENTICATION: 'Authentication', PERFORMANCE: 'Performance', INTEGRATION: 'Integration', OTHER: 'Other' };
 const sentimentLabels: Record<string, Sentiment> = { POSITIVE: 'Positive', NEUTRAL: 'Neutral', NEGATIVE: 'Negative', FRUSTRATED: 'Frustrated' };
 const severityLabels: Record<string, Severity> = { LOW: 'Low', MEDIUM: 'Medium', HIGH: 'High', CRITICAL: 'Critical' };
+const statuses = new Set(['NEW', 'INVESTIGATING', 'RESOLVED', 'CLOSED']);
 
 function relativeTime(value: string) { const age = Date.now() - new Date(value).getTime(); const minutes = Math.max(1, Math.round(age / 60000)); if (minutes < 60) return `${minutes} min ago`; const hours = Math.round(minutes / 60); if (hours < 24) return `${hours} hr${hours === 1 ? '' : 's'} ago`; return `${Math.round(hours / 24)} day${hours < 48 ? '' : 's'} ago`; }
-function normalizeIssue(issue: ApiIssue): DashboardIssue { return { id: issue.id, title: issue.summary, category: categoryLabels[issue.category] ?? 'Other', sentiment: sentimentLabels[issue.sentiment] ?? 'Neutral', severity: severityLabels[issue.severity] ?? 'Medium', status: issue.status === 'RESOLVED' || issue.status === 'CLOSED' ? 'Resolved' : 'Open', time: relativeTime(issue.createdAt), createdAt: issue.createdAt, assignee: 'Unassigned', initials: issue.userReference?.slice(0, 2).toUpperCase() || '—' }; }
+function isRecord(value: unknown): value is Record<string, unknown> { return typeof value === 'object' && value !== null; }
+function assertIssuePage(payload: unknown): asserts payload is { items: Record<string, unknown>[]; pagination: IssuePage['pagination'] } { if (!isRecord(payload) || !Array.isArray(payload.items) || !isRecord(payload.pagination)) throw new Error('Issue API returned an invalid response.'); const pagination = payload.pagination; if (!['page', 'pageSize', 'total', 'totalPages'].every((key) => typeof pagination[key] === 'number')) throw new Error('Issue API returned invalid pagination.'); }
+function readString(value: unknown, fallback: string) { return typeof value === 'string' && value.trim() ? value : fallback; }
+function normalizeDetailedIssue(issue: Record<string, unknown>): DetailedIssue { const status = readString(issue.status, 'NEW'); if (typeof issue.id !== 'string' || typeof issue.summary !== 'string' || typeof issue.createdAt !== 'string' || !statuses.has(status)) throw new Error('Issue API returned an invalid issue.'); return { id: issue.id, summary: issue.summary, feedback: readString(issue.originalFeedback, readString(issue.aiSummary, issue.summary)), category: categoryLabels[readString(issue.category, 'OTHER')] ?? 'Other', subcategory: readString(issue.subcategory, 'Uncategorized'), sentiment: sentimentLabels[readString(issue.sentiment, 'NEUTRAL')] ?? 'Neutral', severity: severityLabels[readString(issue.severity, 'MEDIUM')] ?? 'Medium', status: status === 'NEW' ? 'New' : status === 'INVESTIGATING' ? 'Investigating' : status === 'RESOLVED' ? 'Resolved' : 'Closed', createdAt: issue.createdAt, userReference: readString(issue.userReference, 'Unknown user'), projectReference: readString(issue.projectReference, 'Unknown project'), conversationId: readString(issue.conversationId, 'Not available'), confidence: typeof issue.aiConfidence === 'number' ? issue.aiConfidence : 0, metadata: Object.fromEntries(Object.entries(isRecord(issue.metadata) ? issue.metadata : {}).map(([key, value]) => [key, String(value)])), }; }
 
-export async function fetchIssues(options: { signal?: AbortSignal } = {}): Promise<DashboardIssue[]> { if (process.env.NEXT_PUBLIC_USE_MOCK_DATA === 'true') return mockIssues; const baseUrl = process.env.NEXT_PUBLIC_FEEDBACK_API_URL?.trim() || 'http://localhost:4000'; const response = await fetch(`${baseUrl.replace(/\/$/, '')}/api/issues?page=1&pageSize=100&sort=newest`, { signal: options.signal, headers: { Accept: 'application/json' }, cache: 'no-store' }); if (!response.ok) throw new Error(`Issue API returned ${response.status}`); const payload = await response.json() as IssuesResponse; return payload.items.map(normalizeIssue); }
+export async function fetchIssuePage(filters: IssueFilters, options: { signal?: AbortSignal } = {}): Promise<IssuePage> { const params = new URLSearchParams(); Object.entries(filters).forEach(([key, value]) => { if (value !== undefined && value !== '') { const normalized = ['category', 'subcategory', 'sentiment', 'severity', 'status'].includes(key) ? String(value).replace(/[\/\s-]+/g, '_').toUpperCase() : String(value); params.set(key, normalized); } }); const response = await fetch(`/api/issues?${params}`, { signal: options.signal, headers: { Accept: 'application/json' }, cache: 'no-store' }); if (!response.ok) throw new Error(`Issue API returned ${response.status}`); const payload: unknown = await response.json(); assertIssuePage(payload); return { items: payload.items.map(normalizeDetailedIssue), pagination: payload.pagination }; }
+export async function fetchIssues(options: { signal?: AbortSignal } = {}): Promise<DashboardIssue[]> { const page = await fetchIssuePage({ page: 1, pageSize: 100, sort: 'newest' }, options); return page.items.map((issue) => ({ id: issue.id, title: issue.summary, category: issue.category, sentiment: issue.sentiment, severity: issue.severity, status: issue.status === 'Resolved' || issue.status === 'Closed' ? 'Resolved' : 'Open', time: relativeTime(issue.createdAt), createdAt: issue.createdAt, assignee: 'Unassigned', initials: issue.userReference.slice(0, 2).toUpperCase() || '—' })); }
+export async function submitFeedback(input: SubmitFeedbackInput, options: { signal?: AbortSignal } = {}): Promise<SubmitFeedbackResponse> { const message = input.message.trim(); if (!message || message.length > 20000) throw new Error('Feedback message must contain between 1 and 20,000 characters.'); const response = await fetch('/api/feedback', { method: 'POST', signal: options.signal, headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID(), 'X-Request-ID': crypto.randomUUID() }, body: JSON.stringify({ ...input, message }), }); if (!response.ok) { const error = await response.json().catch(() => null) as { message?: string; requestId?: string } | null; throw new Error(error?.message || `Feedback API returned ${response.status}`); } return response.json() as Promise<SubmitFeedbackResponse>; }
 
-export type SubmitFeedbackInput = { message: string; user_id?: string; conversation_id?: string; project_id?: string; source?: string; page_url?: string; user_agent?: string; metadata?: Record<string, unknown> };
-export type SubmitFeedbackResponse = { feedback_id: string; status: string; created_at: string };
-export type FeedbackApiError = { error?: { code?: string; message?: string; request_id?: string } };
-
-export type DetailedIssue = { id: string; summary: string; feedback: string; category: Category; subcategory: string; sentiment: Sentiment; severity: Severity; status: 'New' | 'Investigating' | 'Resolved' | 'Closed'; createdAt: string; userReference: string; projectReference: string; conversationId: string; confidence: number; metadata: Record<string, string> };
-type ApiDetailedIssue = { id: string; summary: string; originalFeedback?: string; aiSummary?: string; category: string; subcategory?: string; sentiment: string; severity: string; aiConfidence?: number; status: 'NEW' | 'INVESTIGATING' | 'RESOLVED' | 'CLOSED'; createdAt: string; userReference?: string; projectReference?: string; conversationId?: string; metadata?: Record<string, unknown> };
-
-function normalizeDetailedIssue(issue: ApiDetailedIssue): DetailedIssue { return { id: issue.id, summary: issue.summary, feedback: issue.originalFeedback || issue.aiSummary || issue.summary, category: categoryLabels[issue.category] ?? 'Other', subcategory: issue.subcategory || 'Uncategorized', sentiment: sentimentLabels[issue.sentiment] ?? 'Neutral', severity: severityLabels[issue.severity] ?? 'Medium', status: issue.status === 'NEW' ? 'New' : issue.status === 'INVESTIGATING' ? 'Investigating' : issue.status === 'RESOLVED' ? 'Resolved' : 'Closed', createdAt: issue.createdAt, userReference: issue.userReference || 'Unknown user', projectReference: issue.projectReference || 'Unknown project', conversationId: issue.conversationId || 'Not available', confidence: issue.aiConfidence ?? 0, metadata: Object.fromEntries(Object.entries(issue.metadata || {}).map(([key, value]) => [key, String(value)])), }; }
-
-export async function fetchDetailedIssues(options: { signal?: AbortSignal } = {}): Promise<DetailedIssue[]> { const baseUrl = process.env.NEXT_PUBLIC_FEEDBACK_API_URL?.trim() || 'http://localhost:4000'; const response = await fetch(`${baseUrl.replace(/\/$/, '')}/api/issues?page=1&pageSize=100&sort=newest`, { signal: options.signal, headers: { Accept: 'application/json' }, cache: 'no-store' }); if (!response.ok) throw new Error(`Issue API returned ${response.status}`); const payload = await response.json() as { items: ApiDetailedIssue[] }; return payload.items.map(normalizeDetailedIssue); }
-
-export async function submitFeedback(input: SubmitFeedbackInput, options: { signal?: AbortSignal } = {}): Promise<SubmitFeedbackResponse> {
-  const baseUrl = process.env.NEXT_PUBLIC_FEEDBACK_API_URL?.trim() || 'http://localhost:4000';
-  const response = await fetch(`${baseUrl.replace(/\/$/, '')}/api/v1/feedback`, {
-    method: 'POST',
-    signal: options.signal,
-    headers: {
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-      'Idempotency-Key': crypto.randomUUID(),
-      'X-Request-ID': crypto.randomUUID(),
-      ...(process.env.NEXT_PUBLIC_FEEDBACK_API_KEY ? { 'x-api-key': process.env.NEXT_PUBLIC_FEEDBACK_API_KEY } : {}),
-    },
-    body: JSON.stringify(input),
-  });
-  if (!response.ok) {
-    const error = await response.json().catch(() => null) as FeedbackApiError | null;
-    throw new Error(error?.error?.message || `Feedback API returned ${response.status}`);
-  }
-  return response.json() as Promise<SubmitFeedbackResponse>;
-}
+export async function updateIssueStatus(issueId: string, status: Status, options: { signal?: AbortSignal } = {}): Promise<void> { const response = await fetch(`/api/issues/${encodeURIComponent(issueId)}`, { method: 'PATCH', signal: options.signal, headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Request-ID': crypto.randomUUID() }, body: JSON.stringify({ status: status.toUpperCase() }), }); if (!response.ok) { const error = await response.json().catch(() => null) as { message?: string } | null; throw new Error(error?.message || `Issue status update returned ${response.status}`); } }
