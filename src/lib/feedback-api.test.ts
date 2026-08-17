@@ -22,4 +22,11 @@ describe('feedback API client', () => {
     expect(result.pagination).toEqual({ page: 2, pageSize: 10, total: 11, totalPages: 2 });
     expect(result.items[0].category).toBe('Build Failure');
   });
+
+  it('updates an issue status through the same-origin proxy', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 204 }));
+    const { updateIssueStatus } = await import('./feedback-api');
+    await updateIssueStatus('issue/1', 'Investigating');
+    expect(fetchMock).toHaveBeenCalledWith('/api/issues/issue%2F1', expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ status: 'INVESTIGATING' }) }));
+  });
 });
