@@ -19,7 +19,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
   try {
     const url = new URL(`/api/issues/${encodeURIComponent(id)}`, backendUrl());
-    const response = await fetchBackend(url, { method: 'PATCH', headers: backendHeaders(request, true), body: JSON.stringify({ status }) });
+    const response = await fetchBackend(url, { method: 'PATCH', headers: backendHeaders(request, true, 'DASHBOARD_API_KEY'), body: JSON.stringify({ status }) });
     return proxyResponse(response);
   } catch (error) {
     return errorResponse(error instanceof DOMException && error.name === 'AbortError' ? 'Issue service timed out.' : 'Issue service is unavailable.', 502, requestId);
